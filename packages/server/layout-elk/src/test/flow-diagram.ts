@@ -25,6 +25,7 @@ import {
     EdgeTypeHint,
     GEdge,
     GGraph,
+    GLabel,
     GModelElementConstructor,
     GModelFactory,
     GNode,
@@ -32,6 +33,7 @@ import {
     InstanceMultiBinding,
     JsonModelState,
     JsonOperationHandler,
+    LayoutOperationHandler,
     MaybePromise,
     ModelState,
     OperationHandlerConstructor,
@@ -47,8 +49,8 @@ import { inject, injectable } from 'inversify';
 
 /*
  * A minimal diagram language with a custom source model, used to test that layouts are persisted in the source model.
- * The source model deliberately differs from the graphical model: steps are stored by name, their ports are nested in
- * the step record, and flows reference steps by name. Graphical model ids are derived from these names.
+ * The source model deliberately differs from the graphical model: steps are stored by name, their ports and label are
+ * nested in the step record, and flows reference steps by name. Graphical model ids are derived from these names.
  */
 
 export interface FlowPort {
@@ -57,10 +59,17 @@ export interface FlowPort {
     size: Dimension;
 }
 
+export interface FlowLabel {
+    offset: Point;
+    size: Dimension;
+}
+
 export interface FlowStep {
     name: string;
     shape: Point & Dimension;
     ports: FlowPort[];
+    /** The label showing the step's name. Steps without a label record show no label. */
+    label?: FlowLabel;
 }
 
 export interface FlowConnection {
@@ -82,6 +91,9 @@ export namespace FlowIds {
     }
     export function port(step: string, port: string): string {
         return `step:${step}#${port}`;
+    }
+    export function label(step: string): string {
+        return `step:${step}#label`;
     }
     export function flow(from: string, to: string): string {
         return `flow:${from}->${to}`;
@@ -108,6 +120,10 @@ export class FlowModelState extends DefaultModelState implements JsonModelState<
             }
         }
         return undefined;
+    }
+
+    findLabel(elementId: string): FlowLabel | undefined {
+        return this.sourceModel.steps.find(step => FlowIds.label(step.name) === elementId)?.label;
     }
 
     findFlow(elementId: string): FlowConnection | undefined {
@@ -149,6 +165,18 @@ export class FlowGModelFactory implements GModelFactory {
                         GPort.builder().id(FlowIds.port(step.name, port.name)).position(port.offset).size(port.size).build()
                     )
                 )
+                .addChildren(
+                    step.label
+                        ? [
+                              GLabel.builder()
+                                  .id(FlowIds.label(step.name))
+                                  .text(step.name)
+                                  .position(step.label.offset)
+                                  .size(step.label.size)
+                                  .build()
+                          ]
+                        : []
+                )
                 .build()
         );
         const edges = flows.map(flow =>
@@ -179,6 +207,11 @@ export class FlowChangeBoundsOperationHandler extends JsonOperationHandler {
                 if (port) {
                     port.offset = newPosition ?? port.offset;
                     port.size = newSize;
+                }
+                const label = this.modelState.findLabel(elementId);
+                if (label) {
+                    label.offset = newPosition ?? label.offset;
+                    label.size = newSize;
                 }
             }
         });
@@ -218,6 +251,8 @@ export interface FlowDiagramOptions {
     changeBounds?: boolean;
     /** Whether the language persists changed routing points. Defaults to `true`. */
     changeRoutingPoints?: boolean;
+    /** Replaces the default {@link LayoutOperationHandler}. */
+    layoutOperationHandler?: OperationHandlerConstructor;
 }
 
 export class FlowDiagramModule extends DiagramModule {
@@ -250,6 +285,9 @@ export class FlowDiagramModule extends DiagramModule {
         }
         if (this.options.changeRoutingPoints ?? true) {
             binding.add(FlowChangeRoutingPointsOperationHandler);
+        }
+        if (this.options.layoutOperationHandler) {
+            binding.rebind(LayoutOperationHandler, this.options.layoutOperationHandler);
         }
     }
 }

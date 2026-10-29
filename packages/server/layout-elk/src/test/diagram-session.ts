@@ -89,6 +89,7 @@ export interface DiagramSession<M extends ModelState = ModelState> {
     dispatch(action: Action): Promise<void>;
     readonly modelState: M;
     readonly commandStack: CommandStack;
+    readonly layoutEngine: LayoutEngine;
     /** The messages of all infos logged in the session. */
     readonly infos: string[];
     /** The messages of all warnings logged in the session. */
@@ -137,6 +138,7 @@ async function createDiagramSession<M extends ModelState>(
         dispatch: action => session.actionDispatcher.dispatch(action),
         modelState: session.container.get<M>(ModelState),
         commandStack: session.container.get<CommandStack>(CommandStack),
+        layoutEngine: session.container.get<LayoutEngine>(LayoutEngine),
         infos: logger.infos,
         warnings: logger.warnings
     };

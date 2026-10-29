@@ -103,10 +103,12 @@ export class GlspElkLayoutEngine implements LayoutEngine {
     }
 
     /**
-     * Collects the bend points of the first section as routing points. The section's start and end point are left out,
-     * as they are the source and target point of the edge's route, which the client computes from the anchors.
+     * Collects the bend points of the first section as routing points and the bounds of the edge's labels. The
+     * section's start and end point are left out, as they are the source and target point of the edge's route, which
+     * the client computes from the anchors.
      */
     protected collectEdge(elkEdge: ElkExtendedEdge, result: LayoutResult): void {
+        elkEdge.labels?.forEach(elkLabel => this.collectShape(elkLabel, result));
         const section = elkEdge.sections?.[0];
         if (!section) {
             return;
@@ -114,15 +116,24 @@ export class GlspElkLayoutEngine implements LayoutEngine {
         result.routingPoints.push({ elementId: elkEdge.id, newRoutingPoints: section.bendPoints ?? [] });
     }
 
-    protected collectShape(elkShape: ElkNode | ElkPort, result: LayoutResult): void {
-        if (elkShape.x === undefined || elkShape.y === undefined || elkShape.width === undefined || elkShape.height === undefined) {
-            return;
+    /**
+     * Collects the bounds of the given shape and of its labels. Shapes that ELK did not place are left out.
+     */
+    protected collectShape(elkShape: ElkShape, result: LayoutResult): void {
+        if (
+            elkShape.id !== undefined &&
+            elkShape.x !== undefined &&
+            elkShape.y !== undefined &&
+            elkShape.width !== undefined &&
+            elkShape.height !== undefined
+        ) {
+            result.bounds.push({
+                elementId: elkShape.id,
+                newPosition: { x: elkShape.x, y: elkShape.y },
+                newSize: { width: elkShape.width, height: elkShape.height }
+            });
         }
-        result.bounds.push({
-            elementId: elkShape.id,
-            newPosition: { x: elkShape.x, y: elkShape.y },
-            newSize: { width: elkShape.width, height: elkShape.height }
-        });
+        elkShape.labels?.forEach(elkLabel => this.collectShape(elkLabel, result));
     }
 
     protected transformToElk(model: GGraph): ElkNode;

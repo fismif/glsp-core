@@ -13,7 +13,7 @@
  *
  * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
  ********************************************************************************/
-import { GGraph, GNode, GPort, getDefaultMapping } from '@eclipse-glsp/graph';
+import { GEdge, GGraph, GLabel, GNode, GPort, getDefaultMapping } from '@eclipse-glsp/graph';
 import { ChangeBoundsOperation } from '@eclipse-glsp/protocol';
 import { Container } from 'inversify';
 import { describe, expect, it } from 'vitest';
@@ -53,5 +53,28 @@ describe('GModelChangeBoundsOperationHandler', () => {
         const changedPort = modelState.index.findByClass('port', GPort)!;
         expect(changedPort.position).toEqual({ x: -5, y: 10 });
         expect(changedPort.size).toEqual({ width: 12, height: 8 });
+    });
+
+    it('applies the bounds of node and edge labels as given, also outside of their parent', async () => {
+        const nodeLabel = GLabel.builder().id('nodeLabel').text('Node').position(0, 0).size(20, 10).build();
+        const node = GNode.builder().id('node').position(0, 0).size(50, 30).add(nodeLabel).build();
+        const edgeLabel = GLabel.builder().id('edgeLabel').text('Edge').position(0, 0).size(20, 10).build();
+        const edge = GEdge.builder().id('edge').sourceId('node').targetId('node').add(edgeLabel).build();
+        const { handler, modelState } = createHandler(GGraph.builder().id('graph').addChildren(node, edge).build());
+
+        const command = await handler.execute(
+            ChangeBoundsOperation.create([
+                { elementId: 'nodeLabel', newPosition: { x: -5, y: 40 }, newSize: { width: 25, height: 12 } },
+                { elementId: 'edgeLabel', newPosition: { x: -3, y: -7 }, newSize: { width: 30, height: 14 } }
+            ])
+        );
+        await command!.execute();
+
+        const changedNodeLabel = modelState.index.findByClass('nodeLabel', GLabel)!;
+        expect(changedNodeLabel.position).toEqual({ x: -5, y: 40 });
+        expect(changedNodeLabel.size).toEqual({ width: 25, height: 12 });
+        const changedEdgeLabel = modelState.index.findByClass('edgeLabel', GLabel)!;
+        expect(changedEdgeLabel.position).toEqual({ x: -3, y: -7 });
+        expect(changedEdgeLabel.size).toEqual({ width: 30, height: 14 });
     });
 });

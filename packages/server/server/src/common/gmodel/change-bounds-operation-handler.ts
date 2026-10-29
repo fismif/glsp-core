@@ -13,14 +13,18 @@
  *
  * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
  ********************************************************************************/
-import { GModelRoot, GNode, GPort, isGBoundsAware } from '@eclipse-glsp/graph';
+import { GLabel, GModelRoot, GNode, GPort, isGBoundsAware } from '@eclipse-glsp/graph';
 import { ChangeBoundsOperation, Dimension, ElementAndBounds, MaybePromise, Point } from '@eclipse-glsp/protocol';
 import { injectable } from 'inversify';
 import { Command } from '../command/command';
+import { applyElementAndBounds } from '../utils/layout-util';
 import { GModelOperationHandler } from './gmodel-operation-handler';
 
 /**
- * Applies {@link ChangeBoundsOperation} directly to the GModel. Handles the bounds of nodes and ports.
+ * Applies {@link ChangeBoundsOperation} directly to the GModel. Handles the bounds of nodes, ports and labels.
+ *
+ * Node positions inside of another element are clamped to non-negative coordinates. Port and label bounds are applied
+ * as given, as ports are commonly placed on or outside of their node's border and labels next to their parent.
  */
 @injectable()
 export class GModelChangeBoundsOperationHandler extends GModelOperationHandler {
@@ -54,9 +58,8 @@ export class GModelChangeBoundsOperationHandler extends GModelOperationHandler {
 
     protected changeElementBounds(elementId: string, newSize: Dimension, newPosition: Point | undefined): void {
         const index = this.modelState.index;
-        const portToUpdate = index.findByClass(elementId, GPort);
-        if (portToUpdate) {
-            this.changePortBounds(portToUpdate, newSize, newPosition);
+        if (index.findByClass(elementId, GPort) || index.findByClass(elementId, GLabel)) {
+            applyElementAndBounds({ elementId, newSize, newPosition }, index);
             return;
         }
         const nodeToUpdate = index.findByClass(elementId, GNode);
@@ -79,16 +82,5 @@ export class GModelChangeBoundsOperationHandler extends GModelOperationHandler {
 
         nodeToUpdate.size = newSize;
         nodeToUpdate.position = positionToSet;
-    }
-
-    /**
-     * Applies the bounds of a port as given. Unlike node positions, port positions are not clamped to the parent's
-     * bounds, as ports are commonly placed on or outside of their node's border.
-     */
-    protected changePortBounds(port: GPort, newSize: Dimension, newPosition: Point | undefined): void {
-        port.size = newSize;
-        if (newPosition) {
-            port.position = newPosition;
-        }
     }
 }

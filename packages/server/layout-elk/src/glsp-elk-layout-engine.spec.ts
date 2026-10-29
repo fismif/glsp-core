@@ -13,7 +13,7 @@
  *
  * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
  ********************************************************************************/
-import { DefaultModelState, GEdge, GGraph, GModelIndex, GNode, GPort, LayoutEngine, ModelState } from '@eclipse-glsp/server';
+import { DefaultModelState, GEdge, GGraph, GLabel, GModelIndex, GNode, GPort, LayoutEngine, ModelState } from '@eclipse-glsp/server';
 import { Container, ContainerModule } from 'inversify';
 import { describe, expect, it } from 'vitest';
 import { ElkLayoutModule } from './di.config';
@@ -49,6 +49,18 @@ function createForkGraph(): GGraph {
     const toUpper = GEdge.builder().id('toUpper').source(source).target(upper).build();
     const toLower = GEdge.builder().id('toLower').source(source).target(lower).build();
     return GGraph.builder().id('graph').addChildren(source, upper, lower, toUpper, toLower).build();
+}
+
+/** Two connected nodes with a label on a node, on a port and on the edge; all labels start at the origin. */
+function createLabeledGraph(): GGraph {
+    const portLabel = GLabel.builder().id('portLabel').text('out').position(0, 0).size(20, 10).build();
+    const out = GPort.builder().id('out').size(10, 10).add(portLabel).build();
+    const sourceLabel = GLabel.builder().id('sourceLabel').text('Source').position(0, 0).size(40, 10).build();
+    const source = GNode.builder().id('source').size(50, 30).addChildren(sourceLabel, out).build();
+    const target = GNode.builder().id('target').size(50, 30).build();
+    const edgeLabel = GLabel.builder().id('edgeLabel').text('flows').position(0, 0).size(30, 10).build();
+    const edge = GEdge.builder().id('edge').sourceId('out').targetId('target').add(edgeLabel).build();
+    return GGraph.builder().id('graph').addChildren(source, target, edge).build();
 }
 
 describe('GlspElkLayoutEngine', () => {
@@ -105,6 +117,25 @@ describe('GlspElkLayoutEngine', () => {
         });
     });
 
+    describe('computeLayout with labels', () => {
+        it('computes new bounds for node, port and edge labels without changing the graphical model', async () => {
+            const { engine, modelState } = createEngine(createLabeledGraph());
+
+            const result = await engine.computeLayout!();
+
+            for (const [id, size] of [
+                ['sourceLabel', { width: 40, height: 10 }],
+                ['portLabel', { width: 20, height: 10 }],
+                ['edgeLabel', { width: 30, height: 10 }]
+            ] as const) {
+                const labelBounds = result.bounds.find(bounds => bounds.elementId === id);
+                expect(labelBounds?.newSize, id).toEqual(size);
+                expect(labelBounds?.newPosition, id).toBeDefined();
+                expect(modelState.index.findByClass(id, GLabel)!.position, id).toEqual({ x: 0, y: 0 });
+            }
+        });
+    });
+
     describe('computeLayout with ports', () => {
         it('routes an edge that starts at a port', async () => {
             const out = GPort.builder().id('out').size(10, 10).build();
@@ -120,6 +151,20 @@ describe('GlspElkLayoutEngine', () => {
     });
 
     describe('layout', () => {
+        it('applies the same label bounds that computeLayout computes', async () => {
+            const { engine, modelState } = createEngine(createLabeledGraph());
+            const result = await engine.computeLayout!();
+
+            await engine.layout();
+
+            for (const id of ['sourceLabel', 'portLabel', 'edgeLabel']) {
+                const labelBounds = result.bounds.find(bounds => bounds.elementId === id)!;
+                const label = modelState.index.findByClass(id, GLabel)!;
+                expect(label.position, id).toEqual(labelBounds.newPosition);
+                expect(label.size, id).toEqual(labelBounds.newSize);
+            }
+        });
+
         it('applies only the bend points of a bent edge as routing points to the graphical model', async () => {
             const { engine, modelState } = createEngine(createForkGraph());
 
